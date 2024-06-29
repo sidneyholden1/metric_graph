@@ -290,7 +290,7 @@ class Tiling(Graph, Flat):
         
         return tile_V_coords, tile_wadjacency_matrix, connectivity_map
     
-    def construct_truncated_trihexagonal_data(self):
+    def construct_truncated_trihexagonal_tile_data(self):
 
         dodecagon_radius = 1 + np.sqrt(3) / 2
         hexagon_radius = np.sqrt(3) / 2
