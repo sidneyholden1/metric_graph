@@ -4,12 +4,15 @@ from construct_graph.graph import Graph, Flat
 
 class Random_Delaunay_Disc(Graph, Flat):
 
-    def __init__(self, prelim_num_Vs, auto_plot=True, **kwargs):
+    def __init__(self, prelim_num_Vs, auto_plot=True, fix_boundary=False, **kwargs):
 
         (self.num_Vs, 
          self.V_coords, 
          self.wadjacency_matrix, 
          self.interior_V_num) = self.construct_graph_data(prelim_num_Vs)
+        
+        if fix_boundary == True:
+            self.fix_boundary()
         
         self.E_lengths_by_v_num = self.construct_E_lengths_by_v_num()
         
@@ -19,6 +22,14 @@ class Random_Delaunay_Disc(Graph, Flat):
             print(f"\n|V| = {self.num_Vs}")
 
             self.plot_graph(**kwargs)
+
+    def fix_boundary(self):
+
+        boundary_indices = np.setdiff1d(np.arange(self.num_Vs), self.interior_V_num)
+        self.V_coords[boundary_indices] /= np.linalg.norm(self.V_coords[boundary_indices], axis=1, keepdims=True)
+        row_indices, col_indices = self.wadjacency_matrix.nonzero()
+        for row, col in zip(row_indices, col_indices):
+            self.wadjacency_matrix[row, col] = np.linalg.norm(self.V_coords[row] - self.V_coords[col])
         
     def construct_dummy_data(self, temp_num_Vs):
 
