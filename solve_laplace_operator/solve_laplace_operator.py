@@ -3,6 +3,7 @@ import scipy
 import h5py
 import sparseqr
 import warnings
+import scipy
 
 class Metric_Graph_Laplacian_Matrix:
 
@@ -522,6 +523,19 @@ class Continuum_Eigendata:
                     pde_eigenvalues[eni, enj] = func_pde_eigenvalues(i, j)
 
             return pde_eigenvalues
+        
+        elif self.problem == "disc":
+            func_pde_eigenvalues = lambda m, n: np.sqrt(scipy.special.jn_zeros(m, n)[-1]**2 / 2)
+            if np.isscalar(m):
+                m = np.array([m])
+            if np.isscalar(n):
+                n = np.array([n])
+            pde_eigenvalues = np.zeros((len(m), len(n)))
+            for eni, i in enumerate(m):
+                for enj, j in enumerate(n):
+                    pde_eigenvalues[eni, enj] = func_pde_eigenvalues(i, j)
+
+            return pde_eigenvalues
 
     def generate_basis_functions(self, m, n):
 
@@ -547,7 +561,20 @@ class Continuum_Eigendata:
             else:
                 return (cc(m, n), cs(m, n), sc(m, n), ss(m, n), 
                         cc(n, m), cs(n, m), sc(n, m), ss(n, m))
-        
+            
+        elif self.problem == "disc":
+
+            if (m > 2) or (n > 2) or (m < 0) or (n < 0):
+                raise ValueError("Projector is only set up for m, n \in [0, 1, 2]")
+
+            r = lambda x, y: np.sqrt(x**2 + y**2)
+            theta = lambda x, y: np.arctan2(y, x)
+
+            c = lambda m, n: lambda x, y: scipy.special.jn(m, r(x, y) * scipy.special.jn_zeros(m, n)[-1]) * np.cos(m * theta(x, y))
+            # s = lambda m, n: lambda x, y: scipy.special.jn(m, r(x, y) * np.sqrt(scipy.special.jn_zeros(m, n)[-1]**2 / 2)) * np.sin(m * theta(x, y))
+
+        return c(m, n), #, s(m, n)
+
 # class Eigenmode_Plotter:
 
 #     def __init__(self, g):
