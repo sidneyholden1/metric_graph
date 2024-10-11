@@ -9,22 +9,15 @@ import matplotlib.patheffects as path_effects
 class Graph:
 
     """Parent class of more specific graph classes (spiderweb, delaunay triangulations etc.)
-    These child classes need to produce the attributes:
+    These child classes need the attributes:
         - num_Vs
         - V_coords
         - E_lengths_by_v_num
         - interior_V_num
+        - wadjacency_matrix
     """
 
     def __init__(self):
-        """
-        Required attributes:
-            - num_Vs
-            - V_coords
-            - E_lengths_by_v_num
-            - interior_V_num
-            - wadjacency_matrix
-        """
 
         if not hasattr(self, "V_coords"):
             raise AttributeError(f"{self.__class__.__name__} object doesn't have V_coords")
@@ -158,6 +151,7 @@ class Graph:
             "background_color": None,
             "cmap": "plasma",
             "embedding_space": None,
+            "alpha": 1
         }
 
         for key in kwargs:
@@ -352,9 +346,11 @@ class Flat:
         # Add line_collection based off segments and colors. Nice capstyle ("round") is expensive
         if params["capstyle"]:
             line_collection = line_collection(segments, colors=colors, linewidth=params["linewidth"],
-                                              path_effects=[path_effects.Stroke(capstyle=params["capstyle"])])
+                                              path_effects=[path_effects.Stroke(capstyle=params["capstyle"])],
+                                              alpha=params["alpha"])
         else:
-            line_collection = line_collection(segments, colors=colors, linewidth=params["linewidth"])
+            line_collection = line_collection(segments, colors=colors, linewidth=params["linewidth"],
+                                              alpha=params["alpha"])
         add_collection(line_collection)
 
         # Set linewidth(s)
