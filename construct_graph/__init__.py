@@ -6,3 +6,4 @@ from . import random_delaunay_country
 from . import transport_network
 from . import random_geometric_graph
 from . import tiling
+from . import patch_graph

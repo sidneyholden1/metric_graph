@@ -252,8 +252,8 @@ class Graph_Modes:
                 parametrised_edge = np.linspace(0, l_vw, g.g_coords[e_num].shape[1])
 
                 edge_mode = ((eigenvector[v_num] * np.sin(eigenvalue * parametrised_edge[::-1])
-                            + eigenvector[w_num] * np.sin(eigenvalue * parametrised_edge)) 
-                            / np.sin(eigenvalue * l_vw))
+                             + eigenvector[w_num] * np.sin(eigenvalue * parametrised_edge)) 
+                             / np.sin(eigenvalue * l_vw))
                 
                 graph_eigenfunction.append(edge_mode)
 

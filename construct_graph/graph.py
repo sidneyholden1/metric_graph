@@ -24,6 +24,9 @@ class Graph:
         
         if not hasattr(self, "num_Vs"):
             self.num_Vs = self.V_coords.shape[0]
+
+        if not hasattr(self, "E_lengths_by_v_num"):
+            raise AttributeError(f"{self.__class__.__name__} object doesn't have E_lengths_by_v_num")
         
         if not hasattr(self, "wadjacency_matrix"):
             raise AttributeError(f"{self.__class__.__name__} object doesn't have wadjacency_matrix")
