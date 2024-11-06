@@ -1,7 +1,7 @@
 import numpy as np 
 import scipy
 import h5py
-import sparseqr
+# import sparseqr
 import warnings
 import scipy
 

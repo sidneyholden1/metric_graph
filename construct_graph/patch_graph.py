@@ -23,7 +23,7 @@ import numpy as np
 import scipy
 from construct_graph.graph import Graph, Flat
 # import sparseqr
-import sksparse
+# import sksparse
 
 class Patch(Graph, Flat):
 
@@ -190,9 +190,9 @@ class Cell_Problem:
         LHS, RHS = self.construct_equation()
         # xi = sparseqr.solve(LHS, RHS)
         if solve_method == "cholesky":
-            cholesky = sksparse.cholmod.cholesky(LHS + 1e-13 * scipy.sparse.identity(LHS.shape[0], format='csc'))
-            xi = cholesky(RHS)
-            xi = xi.toarray()
+            # cholesky = sksparse.cholmod.cholesky(LHS + 1e-13 * scipy.sparse.identity(LHS.shape[0], format='csc'))
+            # xi = cholesky(RHS)
+            xi = 2 #xi.toarray()
         elif solve_method == "cg":
             xi_0 = scipy.sparse.linalg.cg(LHS, RHS[:, 0].A, rtol=1e-14)[0]
             xi_1 = scipy.sparse.linalg.cg(LHS, RHS[:, 1].A, rtol=1e-14)[0]
