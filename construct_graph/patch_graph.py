@@ -22,7 +22,8 @@ print(coefficient)
 import numpy as np
 import scipy
 from construct_graph.graph import Graph, Flat
-import sparseqr
+# import sparseqr
+import sksparse
 
 class Patch(Graph, Flat):
 
@@ -184,19 +185,30 @@ class Cell_Problem:
 
         return c
 
-    def solve_corrector_equation(self):
+    def solve_corrector_equation(self, solve_method="cg"):
 
         LHS, RHS = self.construct_equation()
-        xi = sparseqr.solve(LHS, RHS)
-        xi = xi.toarray()
+        # xi = sparseqr.solve(LHS, RHS)
+        if solve_method == "cholesky":
+            cholesky = sksparse.cholmod.cholesky(LHS + 1e-13 * scipy.sparse.identity(LHS.shape[0], format='csc'))
+            xi = cholesky(RHS)
+            xi = xi.toarray()
+        elif solve_method == "cg":
+            xi_0 = scipy.sparse.linalg.cg(LHS, RHS[:, 0].A, rtol=1e-14)[0]
+            xi_1 = scipy.sparse.linalg.cg(LHS, RHS[:, 1].A, rtol=1e-14)[0]
+            xi = np.vstack((xi_0, xi_1)).T
+
+        residual = np.linalg.norm(LHS @ xi - RHS)
+        if residual > 1e-10:
+            print(f"Residual too large = {residual}")
+            # return ValueError(f"Residual too large = {residual}")
 
         return xi
 
     def construct_equation(self):
 
-        LHS = scipy.sparse.lil_matrix((self.patch.num_Vs + 1, self.patch.num_Vs))
-        LHS[-1] = np.ones(self.patch.num_Vs)
-        RHS = scipy.sparse.lil_matrix((self.patch.num_Vs + 1, 2))
+        LHS = scipy.sparse.lil_matrix((self.patch.num_Vs, self.patch.num_Vs))
+        RHS = scipy.sparse.lil_matrix((self.patch.num_Vs, 2))
 
         for e in self.patch.edges:
             v, w = e["vw"]
