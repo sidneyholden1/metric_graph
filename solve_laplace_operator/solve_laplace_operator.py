@@ -200,8 +200,9 @@ class Eigendata:
         for ms in self.eigendata_indices:
             graph_eigenvalues[ms] = []
             PDE_eigenvalues[ms] = self.data[self.V_nums[0]][ms]['PDE']['eigenvalue']
-            for num_Vs in self.V_nums:
-                graph_eigenvalues[ms].append(self.data[num_Vs][ms]['graph']['eigenvalue'])
+            # for num_Vs in self.V_nums:
+            #     graph_eigenvalues[ms].append(self.data[num_Vs][ms]['graph']['eigenvalue'])
+            graph_eigenvalues[ms] = self.data[self.V_nums[0]][ms]['graph']['eigenvalue']
 
         return graph_eigenvalues, PDE_eigenvalues
         
@@ -210,11 +211,16 @@ class Eigendata:
         relative_eigenvalue_differences = {}
         for ms in self.eigendata_indices:
             pde_eig = self.PDE_eigenvalues[ms]
+            # if np.abs(self.PDE_eigenvalues[ms]) < 1e-14:
+            #     rel_errs = [np.mean(np.abs(i - pde_eig)) for i in self.graph_eigenvalues[ms]]
+            # else:
+            #     rel_errs = [np.mean(np.abs((i - pde_eig) / pde_eig)) for i in self.graph_eigenvalues[ms]]
+            # relative_eigenvalue_differences[ms] = np.array(rel_errs)
             if np.abs(self.PDE_eigenvalues[ms]) < 1e-14:
-                rel_errs = [np.mean(np.abs(i - pde_eig)) for i in self.graph_eigenvalues[ms]]
+                rel_errs = np.abs(self.graph_eigenvalues[ms] - pde_eig)
             else:
-                rel_errs = [np.mean(np.abs((i - pde_eig) / pde_eig)) for i in self.graph_eigenvalues[ms]]
-            relative_eigenvalue_differences[ms] = np.array(rel_errs)
+                rel_errs = np.abs((self.graph_eigenvalues[ms] - pde_eig) / pde_eig)
+            relative_eigenvalue_differences[ms] = rel_errs
 
         return relative_eigenvalue_differences
 
@@ -223,10 +229,14 @@ class Eigendata:
         relative_eigenfunction_differences = {}
         for ms in self.eigendata_indices:
             relative_eigenfunction_differences[ms] = []
-            for num_Vs in self.V_nums:
-                rel_errs = [(i - j).norm() for i, j in zip(self.data[num_Vs][ms]['graph']['eigenfunction'], 
-                                                           self.data[num_Vs][ms]['PDE']['eigenfunction'])]
-                relative_eigenfunction_differences[ms].append(np.mean(rel_errs))
+            # for num_Vs in self.V_nums:
+            #     rel_errs = np.array([(i - j).norm() for i, j in zip(self.data[num_Vs][ms]['graph']['eigenfunction'], 
+            #                                                         self.data[num_Vs][ms]['PDE']['eigenfunction'])])
+                # relative_eigenfunction_differences[ms].append(np.mean(rel_errs))
+            # relative_eigenfunction_differences[ms].append(rel_errs)
+            rel_errs = np.array([(i - j).norm() for i, j in zip(self.data[self.V_nums[0]][ms]['graph']['eigenfunction'], 
+                                                                self.data[self.V_nums[0]][ms]['PDE']['eigenfunction'])])
+            relative_eigenfunction_differences[ms] = rel_errs
 
         return relative_eigenfunction_differences
 
@@ -244,15 +254,17 @@ class Graph_Modes:
         graph_eigenfunction = []
 
         if np.abs(eigenvalue) < 1e-10:
-            for e_num, ((v_num, w_num), l_vw) in enumerate(g.E_lengths_by_v_num.items()):
+            for e_num, _ in enumerate(g.edges):
                 edge_mode = np.ones(g.g_coords[e_num].shape[1])
                 graph_eigenfunction.append(edge_mode)
         else:
-            for e_num, ((v_num, w_num), l_vw) in enumerate(g.E_lengths_by_v_num.items()):
+            for e_num, edge in enumerate(g.edges):
+                v, w = edge["vw"]
+                l_vw = edge["l_vw"]
                 parametrised_edge = np.linspace(0, l_vw, g.g_coords[e_num].shape[1])
 
-                edge_mode = ((eigenvector[v_num] * np.sin(eigenvalue * parametrised_edge[::-1])
-                             + eigenvector[w_num] * np.sin(eigenvalue * parametrised_edge)) 
+                edge_mode = ((eigenvector[v] * np.sin(eigenvalue * parametrised_edge[::-1])
+                             + eigenvector[w] * np.sin(eigenvalue * parametrised_edge)) 
                              / np.sin(eigenvalue * l_vw))
                 
                 graph_eigenfunction.append(edge_mode)
@@ -276,20 +288,31 @@ class Graph_Modes:
 
         for k in graph_eigenvalues:
 
-            if np.abs(k) < 1e-12:
-                Q, R, perm, r = sparseqr.qr(g.construct_L(k), tolerance=None)
-            else:
-                Q, R, perm, r = sparseqr.qr(g.construct_L(k), tolerance=1e-8)
-
-            dim_null_space = len(g.interior_V_num) - r
+            eigenvalues, eigenvectors = scipy.sparse.linalg.eigsh(g.construct_L(k), k=5, which='SM')
+            null_eigenvalues = np.argwhere(np.abs(eigenvalues) < 1e-10).flatten()
+            dim_null_space = len(null_eigenvalues)
 
             null_vectors = np.zeros((g.num_Vs, dim_null_space))
-            null_vectors_for_interior = Q.toarray()[:, -dim_null_space:]
-            for d in range(dim_null_space):
-                null_vectors[:, d][g.interior_V_num] = null_vectors_for_interior[:, d]
+            for en, null_ind in enumerate(null_eigenvalues):
+                null_vectors[g.interior_V_num, en] = eigenvectors[:, null_ind]
 
             null_space_dims.append(dim_null_space)
             graph_eigenvectors.append(null_vectors)
+
+            # if np.abs(k) < 1e-12:
+            #     Q, R, perm, r = sparseqr.qr(g.construct_L(k), tolerance=None)
+            # else:
+            #     Q, R, perm, r = sparseqr.qr(g.construct_L(k), tolerance=1e-8)
+
+            # dim_null_space = len(g.interior_V_num) - r
+
+            # null_vectors = np.zeros((g.num_Vs, dim_null_space))
+            # null_vectors_for_interior = Q.toarray()[:, -dim_null_space:]
+            # for d in range(dim_null_space):
+            #     null_vectors[:, d][g.interior_V_num] = null_vectors_for_interior[:, d]
+
+            # null_space_dims.append(dim_null_space)
+            # graph_eigenvectors.append(null_vectors)
 
         graph_eigenvalues = np.repeat(graph_eigenvalues, null_space_dims)
         graph_eigenvectors = np.hstack(graph_eigenvectors)
@@ -424,9 +447,9 @@ class Projector:
         basis_functions = self.continuum_eigendata.generate_basis_functions(m, n)
 
         if function_domain == "vertices":
-            x, y = self.V_coords[:, 0], self.V_coords[:, 1]
+            # x, y = self.V_coords[:, 0], self.V_coords[:, 1]
 
-            pde_eigenvectors = [function(x, y) for function in basis_functions]
+            pde_eigenvectors = [function(*self.V_coords.T) for function in basis_functions]
             pde_eigenvectors = [function / np.linalg.norm(function) for function in pde_eigenvectors]
             pde_eigenvectors = np.vstack((pde_eigenvectors)).T
 
@@ -436,10 +459,10 @@ class Projector:
             pde_eigenfunctions = [[] for _ in range(len(basis_functions))]
 
             for edge in self.g_coords:
-                x, y = edge
+                # x, y = edge
                 
                 for i in range(len(basis_functions)):
-                    pde_eigenfunctions[i].append(basis_functions[i](x, y))
+                    pde_eigenfunctions[i].append(basis_functions[i](*edge))
 
             pde_eigenfunctions = [Graph_Function(pde_eigenfunction, self.g_coords).normalize() 
                                   for pde_eigenfunction in pde_eigenfunctions]
@@ -447,11 +470,36 @@ class Projector:
             return pde_eigenfunctions
 
         elif function_domain == "continuum":
-            edge = np.linspace(0, 1, 256, endpoint=True)   
-            x, y = np.meshgrid(edge, edge)
-            pde_eigenfunctions = [function(x, y) for function in basis_functions]
 
-            return x, y, pde_eigenfunctions
+            if self.continuum_eigendata.problem == "square_flat_torus":
+                edge = np.linspace(0, 1, 256, endpoint=True)   
+                x, y = np.meshgrid(edge, edge)
+                pde_eigenfunctions = [function(x, y) for function in basis_functions]
+                return x, y, pde_eigenfunctions
+            
+            elif self.continuum_eigendata.problem == "disc":
+                points_per_dim = 128
+                r = np.linspace(0, 1, points_per_dim)**0.5
+                theta = np.linspace(0, 2 * np.pi, points_per_dim)
+                r, theta = np.meshgrid(r, theta)
+                x = r * np.cos(theta)
+                y = r * np.sin(theta)
+                pde_eigenfunctions = [function(x, y) for function in basis_functions]
+
+                return x, y, pde_eigenfunctions
+            
+            elif self.continuum_eigendata.problem == "sphere":
+                num_points = 256
+                phi = np.linspace(0, 2 * np.pi, num_points)  
+                theta = np.linspace(0, np.pi, num_points)   
+                theta, phi = np.meshgrid(theta, phi)
+                x = np.sin(theta) * np.cos(phi)
+                y = np.sin(theta) * np.sin(phi)
+                z = np.cos(theta)
+
+                pde_eigenfunctions = [function(x, y, z) for function in basis_functions]
+
+                return x, y, z, pde_eigenfunctions
 
     def find_graph_eigenspace(self, m, n):
 
@@ -478,30 +526,48 @@ class Projector:
 
         return keep_args
 
-    def __call__(self, m, n):
+    def __call__(self, m, n, splittings=False):
 
         self.data[m, n] = {"graph": {}, "PDE": {}}
 
         # Get PDE eigenvalues
         self.data[m, n]["PDE"]["eigenvalue"] = self.continuum_eigendata.calculate_pde_eigenvalues(m, n)
 
-        # Get PDE eigenfunctions
-        pde_eigenfunctions = self.construct_pde_functions(m, n, function_domain="graph")
-        self.data[m, n]["PDE"]["eigenfunction"] = pde_eigenfunctions
-        
         # Get graph eigenvalues
         keep_args = self.find_graph_eigenspace(m, n)
         self.data[m, n]["graph"]["eigenvalue"] = self.modes.graph_eigenvalues[keep_args]
 
-        # Get graph eigenfunctions
-        project_functions = []
-        for pde_eigenfunction in pde_eigenfunctions:
-            projection = []
-            for arg in keep_args:
-                ip = pde_eigenfunction.dot(self.modes.graph_eigenfunctions[arg])
-                projection.append(ip * self.modes.graph_eigenfunctions[arg])
-            project_functions.append(np.sum(projection))
-        self.data[m, n]["graph"]["eigenfunction"] = project_functions 
+        # Get PDE eigenfunctions
+        pde_eigenfunctions = self.construct_pde_functions(m, n, function_domain="graph")
+
+        if splittings: # Project graph modes onto PDE modes
+
+            # Get graph eigenfunctions
+            self.data[m, n]["graph"]["eigenfunction"] = [self.modes.graph_eigenfunctions[i] for i in keep_args]
+
+            # Get PDE eigenfunctions
+            project_functions = []
+            for graph_eigenfunction in self.data[m, n]["graph"]["eigenfunction"]:
+                projection = []
+                for pde_eigenfunction in pde_eigenfunctions:
+                    ip = graph_eigenfunction.dot(pde_eigenfunction)
+                    projection.append(ip * pde_eigenfunction)
+                project_functions.append(np.sum(projection))
+            self.data[m, n]["PDE"]["eigenfunction"] = project_functions 
+
+        else: # Project PDE modes onto graph modes
+
+            self.data[m, n]["PDE"]["eigenfunction"] = pde_eigenfunctions
+
+            # Get graph eigenfunctions
+            project_functions = []
+            for pde_eigenfunction in pde_eigenfunctions:
+                projection = []
+                for arg in keep_args:
+                    ip = pde_eigenfunction.dot(self.modes.graph_eigenfunctions[arg])
+                    projection.append(ip * self.modes.graph_eigenfunctions[arg])
+                project_functions.append(np.sum(projection))
+            self.data[m, n]["graph"]["eigenfunction"] = project_functions 
 
 class Continuum_Eigendata:
 
@@ -534,6 +600,13 @@ class Continuum_Eigendata:
             for eni, i in enumerate(m):
                 for enj, j in enumerate(n):
                     pde_eigenvalues[eni, enj] = func_pde_eigenvalues(i, j)
+
+            return pde_eigenvalues
+        
+        elif self.problem == "sphere":
+            func_pde_eigenvalues = lambda m: np.sqrt((m * (m + 1)) / 2)
+            # pde_eigenvalues = np.ones((1, (2 * m + 1))) * func_pde_eigenvalues(m)
+            pde_eigenvalues = np.array([func_pde_eigenvalues(m)])
 
             return pde_eigenvalues
 
@@ -573,133 +646,24 @@ class Continuum_Eigendata:
             c = lambda m, n: lambda x, y: scipy.special.jn(m, r(x, y) * scipy.special.jn_zeros(m, n)[-1]) * np.cos(m * theta(x, y))
             # s = lambda m, n: lambda x, y: scipy.special.jn(m, r(x, y) * np.sqrt(scipy.special.jn_zeros(m, n)[-1]**2 / 2)) * np.sin(m * theta(x, y))
 
-        return c(m, n), #, s(m, n)
+            return c(m, n), #, s(m, n)
 
-# class Eigenmode_Plotter:
+        elif self.problem == "sphere":
 
-#     def __init__(self, g):
+            y_lm_real = lambda n, m: lambda x, y, z: -np.real(scipy.special.sph_harm(n, m, *self.cartesian_to_spherical(x, y, z)))
+            y_lm_zero = lambda n, m: lambda x, y, z: np.real(scipy.special.sph_harm(n, m, *self.cartesian_to_spherical(x, y, z)))
+            y_lm_imag = lambda n, m: lambda x, y, z: -np.imag(scipy.special.sph_harm(n, m, *self.cartesian_to_spherical(x, y, z)))
 
-#         self.domain = g.g_coords
-#         self.E_lengths_by_v_num = g.E_lengths_by_v_num
-#         self.wadjacency_matrix = g.wadjacency_matrix
-#         self.plot_graph = g.plot_graph
+            funcs = ()
+            for n in range(-m, m + 1):
+                if n < 0: funcs += (y_lm_imag(n, m), )
+                elif n == 0: funcs += (y_lm_zero(n, m), )
+                else: funcs += (y_lm_real(n, m), )
 
-#     def __call__(self, eigenvalue, eigenvector, **kwargs):
-
-#         eigenmode = self.construct_eigenmode(eigenvalue, eigenvector)
-
-#         return self.plot_graph(eigenmode=eigenmode, **kwargs)
-
-#     def construct_eigenmode(self, eigenvalues, eigenvectors, coeffs=[1]):
-
-#         eigenmodes = []
-#         if not isinstance(eigenvalues, (list, np.ndarray, tuple)):
-#             eigenvalues = [eigenvalues]
-#         if not isinstance(eigenvectors, list):
-#             eigenvectors = [eigenvectors]
-
-#         for eigenvalue, eigenvector, coeff in zip(eigenvalues, eigenvectors, coeffs):
-
-#             eigenmode = []
-
-#             for e_num, ((v_num, w_num), l_vw) in enumerate(self.E_lengths_by_v_num.items()):
-#                 parametrised_edge = np.linspace(0, l_vw, self.domain[e_num].shape[1])
-
-#                 edge_mode = (eigenvector[v_num] * np.sin(eigenvalue * parametrised_edge[::-1])
-#                             + eigenvector[w_num] * np.sin(eigenvalue * parametrised_edge)) / np.sin(eigenvalue * l_vw)
-                
-#                 eigenmode.append(edge_mode)
-
-#             max_val = np.max(np.abs(np.hstack(eigenmode)))
-#             eigenmode = [coeff * eigm / max_val for eigm in eigenmode]
-
-#             eigenmodes.append(eigenmode)
-
-#         if len(eigenmodes) == 1:
-#             eigenmodes = eigenmodes[0]
-#         else:
-#             eigenmodes = np.sum(eigenmodes, axis=0)
-
-#         return eigenmodes
-
-# class Data_Storer:
-
-#     def __init__(self):
-
-#         self.data = {}
-
-#     def update_data(self, index, eigenvalue, eigenvector):
-
-#         self.data[f"{index}"] = [eigenvalue, eigenvector]
-
-#     def test_file_name_ending(self, file_name):
-
-#         if file_name[-3:] != ".h5":
-#             return file_name + ".h5"
+            return funcs
         
-#         return file_name
-
-#     def save_data(self, file_name):
-
-#         file_name = self.test_file_name_ending(file_name)
-
-#         with h5py.File(file_name, 'w') as f:
-#             for key, value in self.data.items():
-#                 group = f.create_group(key)
-#                 group.create_dataset('eigenvalue', data=value[0])
-#                 group.create_dataset('eigenvector', data=value[1])
-
-#     def load_data(self, file_name):
-
-#         file_name = self.test_file_name_ending(file_name)
-
-#         data = {}
-
-#         with h5py.File(file_name, 'r') as f:
-#             for key in f.keys():
-#                 group = f[key]
-#                 float_value = group['eigenvalue'][()]
-#                 array_values = group['eigenvector'][()]
-#                 data[key] = [float_value, array_values]
-
-#         return data
-
-# class Eigenvector_Calculator:
-
-#     def __init__(self, g):
-
-#         self.g = g
-
-#     def __call__(self, k, degeneracy=5):
-
-#         evals, vecs = scipy.sparse.linalg.eigs(self.g.construct_L(k), 
-#                                                k=degeneracy, sigma=0, tol=1e-13)
-        
-#         actual_degeneracy_mask = np.abs(evals) < 1e-12
-#         if np.sum(actual_degeneracy_mask) > 4:
-#             raise ValueError("Haven't found all eigenbasis vectors.")
-        
-#         null_vectors = np.real(vecs[:, actual_degeneracy_mask])
-
-#         if null_vectors.size > 0:
-#             degeneracy = null_vectors.shape[1]
-
-#             if str(type(self.g)) == "<class 'construct_graph.spiderweb.Spiderweb'>":
-#                 costheta = np.cos(self.g.j * np.linspace(0, 2 * np.pi, self.g.num_angular_Vs, endpoint=False))
-
-#                 eigenvectors = np.zeros((self.g.num_Vs, degeneracy))
-
-#                 for col in range(degeneracy):
-#                     ans = (costheta * null_vectors[:, col][1:][:, None]).flatten()
-#                     ans = np.concatenate([[null_vectors[:, col][0]], ans])
-#                     eigenvectors[:, col] = ans
-
-#             else:
-#                 eigenvectors = np.zeros((self.g.num_Vs, degeneracy))
-
-#                 for col in range(degeneracy):
-#                     eigenvectors[self.g.interior_V_num, col] = null_vectors[:, col]
-
-#             return eigenvectors
-#         else:
-#             raise ValueError("No eigenvectors. Probably eigenvalue isn't accurate enough.")
+    def cartesian_to_spherical(self, x, y, z):
+        r = np.sqrt(x**2 + y**2 + z**2)
+        theta = np.arccos(z / r)  # Colatitude
+        phi = np.arctan2(y, x)    # Azimuth
+        return phi, theta

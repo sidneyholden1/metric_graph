@@ -319,7 +319,7 @@ class Flat:
 
         # Plot background embedding space
         if params["embedding_space"] is not None:
-            self.add_embedding_space(ax, params["embedding_space"])
+            self.add_embed4ding_space(ax, params["embedding_space"])
 
         # Construct segmentation of each edge for color plotting
         segments = []
@@ -451,3 +451,117 @@ class Spherical:
             R[r_num] = (transf.T @ R[r_num] @ transf)[:-1, :-1]
 
         return R
+    
+    def plot_graph(self, **kwargs):
+
+        params = self.generate_plot_kwargs(**kwargs)
+
+        if params["fig"]: fig = params["fig"]
+        else: fig = plt.figure(figsize=(params["figsize"], params["figsize"]))
+
+        # Set ax and other functions depending on 2d or 3d plot
+        if params["ax"]: ax = params["ax"]
+        else: ax = fig.add_subplot(111, projection="3d")
+        ax.view_init(*params["view"])
+
+        # Set background color
+        if params["background_color"]:
+            fig.set_facecolor(params["background_color"])
+            ax.set_facecolor(params["background_color"])
+
+        # Plot background embedding space
+        if params["embedding_space"] is not None:
+            self.add_embedding_space(ax, params["embedding_space"])
+
+        min_eig = np.min(params["eigenmode"])
+        max_eig = np.max(params["eigenmode"])
+
+        for coords, mode in zip(self.g_coords, params["eigenmode"]):
+            x, y, z = coords
+            
+            # Create segments between consecutive points
+            points = np.array([x, y, z]).T.reshape(-1, 1, 3)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+            # Normalize colormap to eigenmode range
+            norm = plt.Normalize(min_eig, max_eig)
+
+            # Create 3D line collection
+            lc = mpl_toolkits.mplot3d.art3d.Line3DCollection(segments, cmap=params["cmap"], norm=norm)
+            lc.set_array(mode[:-1])  # Use function values as colormap
+            lc.set_linewidth(params["linewidth"])
+            if params["capstyle"]:
+                lc.set_capstyle(params["capstyle"])  # Ensure round cap
+
+            ax.add_collection(lc)
+
+        # Set bordering and aspect ratio
+        self.set_plot_geometry(fig, ax)
+        # Return plt objects of show
+        if params["return_figax"]: 
+            return fig, ax
+        else: 
+            plt.show()
+
+    def construct_segments(self, coords):
+        return np.stack((coords[:, :-1].T, coords[:, 1:].T), axis=1)
+
+    def construct_colors_for_segments(self, eigen):
+
+        color = []
+
+        if eigen.shape[-1] > 2:
+            color.append(eigen[0])
+            color.extend(((eigen[1:-2] + eigen[2:-1]) / 2).tolist())
+            color.append(eigen[-1])
+        else:
+            color.append(np.mean(eigen).tolist())
+
+        return color
+
+    def map_colors(self, colors, cmap):
+
+        colors = np.array(colors)
+        colors[np.abs(colors) < 1e-15] = 0
+        colormap = eval(f"plt.cm.{cmap}")
+        norm = plt.Normalize(vmin = np.min(colors), vmax = np.max(colors))
+        # norm = plt.Normalize(vmin = 0, vmax = 1)
+        colors = colormap(norm(colors))
+
+        return colors
+    
+    def add_embedding_space(self, ax, space):
+
+        # Originally had color='xkcd:periwinkle blue' with alpha=0.25
+        # Equivalent with rgba is (0.89, 0.89, 0.978), but this looks closer instead:
+        rgba_periwinkle_blue = (0.89, 0.902, 1)
+        if self.num_Vs < 4000: linewidth = 4
+        else: linewidth = 1
+        if space == "square":
+            x_min = np.min(self.V_coords[:, 0])
+            y_min = np.min(self.V_coords[:, 1])
+            square = matplotlib.patches.Rectangle((x_min, y_min), 1, 1, 
+                                                   facecolor=rgba_periwinkle_blue, 
+                                                   edgecolor=rgba_periwinkle_blue, linewidth=linewidth)
+            ax.add_patch(square)
+        elif space == "disc":
+            circle = plt.Circle((0, 0), 1, color='xkcd:periwinkle blue', edgecolor='black', linewidth=0)
+            ax.add_patch(circle)
+        elif space == "hexagon_rectangle":
+            x_min = np.min(self.V_coords[:, 0])
+            y_min = np.min(self.V_coords[:, 1])
+            rectangle = matplotlib.patches.Rectangle((x_min, y_min), 1, 1 / np.sqrt(3), 
+                                                     facecolor=rgba_periwinkle_blue, 
+                                                     edgecolor=rgba_periwinkle_blue, linewidth=linewidth)
+            ax.add_patch(rectangle)
+
+    def set_plot_geometry(self, fig, ax):
+
+        fig.tight_layout()
+        ax.autoscale(tight=True)
+        ax.margins(x=0.01, y=0.01)
+        ax.set_xlim(-0.7, 0.7)
+        ax.set_ylim(-0.7, 0.7)
+        ax.set_zlim(-0.7, 0.7)
+        ax.axis('off')
+        ax.set_aspect("equal")

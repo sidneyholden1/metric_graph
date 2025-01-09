@@ -21,6 +21,7 @@ print(coefficient)
 
 import numpy as np
 import scipy
+import pickle
 from construct_graph.graph import Graph, Flat
 # import sparseqr
 # import sksparse
@@ -48,6 +49,34 @@ class Patch(Graph, Flat):
 
         self.E_lengths_by_v_num, self.wadjacency_matrices = self.construct_NEP_data()
 
+        self.g_coords = self.construct_g_coords()
+
+    def construct_g_coords(self, fixed_num_points=False, **kwargs):
+
+        if fixed_num_points: 
+            try: num_points = kwargs["num_points"]
+            except: num_points = 33
+            calculate_points_per_edge = lambda _: num_points
+        else: 
+            # Make sure the discretization size is roughly equal on each edge.
+            # Also make sure that there is a minimum of one discretization point
+            # on each edge
+            min_l_vw = np.min(np.array(list(self.E_lengths_by_v_num.values())))
+            num_points = 9 / min_l_vw
+            calculate_points_per_edge = lambda l: min(max(9, int(l * num_points)), 33)
+
+        g_coords = []
+
+        for edge in self.edges:
+            l_vw = edge["l_vw"]
+            v_coord, w_coord = edge["vw_coords"]
+
+            points_per_edge = calculate_points_per_edge(l_vw)
+            x = np.linspace(0, 1, points_per_edge)
+            l = (x * w_coord[:, np.newaxis] + (1 - x) * v_coord[:, np.newaxis])
+            g_coords.append(l)
+
+        return g_coords
 
     def construct_NEP_data(self):
 
@@ -316,3 +345,108 @@ class Random_Delaunay:
         total_edges = np.sort(total_edges, axis=1)
 
         return total_edges
+    
+class RGG:
+
+    def __init__(self, num_Vs):
+
+        self.num_Vs = num_Vs
+        self.total_V_coords, self.total_num_Vs = self.construct_total_V_coords()
+        self.total_edges = self.construct_total_edges()
+
+        self.totally_periodic = False
+
+    def construct_total_V_coords(self):
+
+        num_Vs = 0
+        bulk_V_coords = []
+        boundary_V_coords = []
+        while num_Vs < self.num_Vs:
+            v_coords_x, v_coords_y = np.random.uniform(-1, 2, size=(2))
+            v_coords = np.array([v_coords_x, v_coords_y])
+            if (0 < v_coords_x < 1) and (0 < v_coords_y < 1):
+                num_Vs += 1
+                bulk_V_coords.append(v_coords)
+            else:
+                boundary_V_coords.append(v_coords)
+        
+        total_V_coords = np.vstack((bulk_V_coords, boundary_V_coords))
+        total_num_Vs = total_V_coords.shape[0]
+
+        return total_V_coords, total_num_Vs
+    
+    def construct_total_edges(self):
+
+        tree = scipy.spatial.cKDTree(self.total_V_coords)
+
+        max_coord = np.max(np.abs(self.total_V_coords))
+        min_coord = np.min(np.abs(self.total_V_coords))
+        mean_edge_length = np.abs(max_coord - min_coord) / np.sqrt(self.total_num_Vs)
+        mean_edge_scaling_for_connection_radius = 3
+        connection_radius = mean_edge_scaling_for_connection_radius * mean_edge_length
+
+        total_edges = np.array(list(tree.query_pairs(r=connection_radius)))
+        total_edges = np.sort(total_edges, axis=1)
+
+        return total_edges
+    
+class Aperiodic_Monotile:
+
+    def __init__(self, N, start_point=np.array([0, 0])):
+
+        self.total_V_coords, self.total_edges, self.num_Vs = self.construct_V_coords(N, start_point)
+
+        self.totally_periodic = False
+
+    def construct_V_coords(self, N, start_point):
+
+        file = open("grid_size_150_data/V_coords.pkl", "rb")
+        full_V_coords = pickle.load(file)
+        file.close()
+        file = open("grid_size_150_data/E_lengths_by_v_num.pkl", "rb")
+        full_E_lengths_by_v_num = pickle.load(file)
+        file.close()
+
+        translate = np.array([0.1, -50.1]) - start_point
+        full_V_coords += translate
+
+        self.original_coords = full_V_coords
+
+        bulk_mask = ((0 < full_V_coords[:, 0]) & (0 < full_V_coords[:, 1]) 
+                     & (full_V_coords[:, 0] < N) & (full_V_coords[:, 1] < N))
+
+        full_V_coords = np.vstack((full_V_coords[bulk_mask], full_V_coords[~bulk_mask])) / N
+
+        old_inds = np.concatenate((np.argwhere(bulk_mask).flatten(), np.argwhere(~bulk_mask).flatten()))
+        new_inds = np.arange(full_V_coords.shape[0])
+        remap = {i: j for i, j in zip(old_inds, new_inds)}
+
+        old_edges = np.array(list(full_E_lengths_by_v_num.keys()))
+        edges = []
+        for v_ind, w_ind in old_edges:
+            edges.append([remap[v_ind], remap[w_ind]])
+        edges = np.array(edges)
+        edges = np.sort(edges, axis=1)
+
+        num_Vs = np.sum(bulk_mask)
+
+        bulk_edges = []
+        for i, j in edges:
+            if i < num_Vs and j < num_Vs:
+                bulk_edges.append([i, j])
+        bulk_V_inds = np.unique(bulk_edges)
+        disconnected_V_inds = set(np.arange(num_Vs)) - set(bulk_V_inds)
+        if len(disconnected_V_inds) > 0:
+            all_ok_inds = set(np.arange(full_V_coords.shape[0])) - disconnected_V_inds
+            old_inds = np.concatenate((np.array(list(all_ok_inds)), np.array(list(disconnected_V_inds))))
+            full_V_coords = full_V_coords[old_inds]
+            new_inds = np.arange(full_V_coords.shape[0])
+            remap = {i: j for i, j in zip(old_inds, new_inds)}
+            new_edges = []
+            for v_ind, w_ind in edges:
+                new_edges.append([remap[v_ind], remap[w_ind]])
+            new_edges = np.array(new_edges)
+            edges = np.sort(new_edges, axis=1)
+            num_Vs -= len(disconnected_V_inds)
+
+        return full_V_coords, edges, num_Vs
